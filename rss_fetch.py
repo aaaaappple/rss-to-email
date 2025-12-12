@@ -46,92 +46,102 @@ def send_email(subject, content):
     except Exception as e:
         print(f"推送失败：{e}")
 
-# 提取信息源原始精准时间
-def get_source_exact_time(entry_content):
+# 提取信息源原始精确时分（仅XX:XX格式）
+def get_source_hour_min(content):
     try:
-        content = html.unescape(entry_content)
-        content = content.replace("\n", "").replace("\r", "").strip()
-        
-        time_match1 = re.search(r'>\s*(\d{2}:\d{2})\s*<', content)
-        if time_match1:
-            return time_match1.group(1).strip()
-        
-        time_match2 = re.search(r'<time[^>]*>\s*(\d{2}:\d{2})\s*</time>', content, re.IGNORECASE)
-        if time_match2:
-            return time_match2.group(1).strip()
-        
-        time_match3 = re.search(r'datetime="[^"]*T(\d{2}:\d{2}):\d{2}[^"]*"', content)
-        if time_match3:
-            return time_match3.group(1).strip()
-        
-        return ""
+        content = html.unescape(content)
+        content = content.replace("\n", "").replace("\r", "").replace("\t", "").strip()
+        # 匹配核心时分格式
+        patterns = [r'>\s*(\d{2}:\d{2})\s*<', r'<time[^>]*>\s*(\d{2}:\d{2})\s*</time>', r'datetime="[^"]*T(\d{2}:\d{2}):\d{2}[^"]*"']
+        for p in patterns:
+            match = re.search(p, content, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+        return None
     except:
-        return ""
+        return None
 
-# 核心功能：抓新资讯+合并去分类+按时间排序
+# 提取资讯的发布日期（仅MM-DD格式，无年份）
+def get_news_date_md(entry):
+    try:
+        time_str = entry.get("updated", entry.get("published", ""))
+        if not time_str:
+            return None
+        # 解析为日期对象，仅提取月-日
+        time_obj = datetime.fromisoformat(time_str.replace("Z", "+00:00"))
+        return time_obj.strftime("%m-%d")  # 关键修改：仅保留月和日
+    except:
+        # 解析失败返回当前月-日
+        return datetime.now().strftime("%m-%d")
+
+# 核心功能：按规则展示时间+去分类+排序
 def fetch_rss():
     pushed_ids = get_pushed_ids()
-    all_news = []  # 合并所有资讯，不再分来源
+    all_news = []  # 存储格式：(排序用时间戳, 展示用时间, 资讯内容)
 
     # 循环抓取两个数据源
     for rss_url, source in RSS_SOURCES:
         try:
             feed = feedparser.parse(rss_url)
             for entry in feed.entries:
-                entry_id = entry.get("id", "")
-                title = entry.get("title", "无标题")
-                updated_time = entry.get("updated", "")
-                原文链接 = entry.get("link", "无原文链接")
-                entry_content = entry.get("content", [{}])[0].get("value", "") if entry.get("content") else ""
+                entry_id = entry.get("id", "").strip()
+                title = entry.get("title", "").strip()
+                link = entry.get("link", "").strip()
+                content = entry.get("content", [{}])[0].get("value", "") if entry.get("content") else ""
 
-                # 只推没发过的新内容
-                if entry_id not in pushed_ids and title and updated_time:
-                    # 提取信息源精准时间
-                    显示时间 = get_source_exact_time(entry_content)
-                    if not 显示时间:
-                        try:
-                            time_obj = datetime.fromisoformat(updated_time.replace("Z", "+00:00"))
-                            显示时间 = time_obj.strftime("%H:%M")
-                        except:
-                            显示时间 = "未知时间"
-                    
-                    # 存储（时间+内容）元组，用于后续排序
-                    单条内容 = f"<li>［{显示时间} {source}］{title} 👉 <a href='{原文链接}'>原文链接</a></li><br>"
-                    all_news.append((显示时间, 单条内容))  # 元组格式：(时间, 内容)
+                # 基础筛选：未推送+有ID+有标题+有有效链接
+                if (entry_id not in pushed_ids and entry_id and title and link.startswith(("http", "https"))):
+                    # 步骤1：提取信息源精确时分
+                    source_hm = get_source_hour_min(content)
+                    # 步骤2：提取资讯发布月-日
+                    news_md = get_news_date_md(entry)
+                    if not news_md:
+                        print(f"⚠️  {source}《{title}》无法提取日期，跳过")
+                        continue
+
+                    # 补充完整年份用于排序（仅排序用，不展示）
+                    current_year = datetime.now().year
+                    news_date_full = f"{current_year}-{news_md}"
+
+                    # 确定展示用时间和排序用时间戳
+                    if source_hm:
+                        show_time = source_hm  # 有时分，仅展示时分
+                        # 排序戳：完整日期+时分（精准排序）
+                        sort_time = datetime.strptime(f"{news_date_full} {source_hm}", "%Y-%m-%d %H:%M").timestamp()
+                    else:
+                        show_time = news_md  # 无时分，仅展示月-日
+                        # 排序戳：完整日期+23:59（同日期无时分的排最后）
+                        sort_time = datetime.strptime(f"{news_date_full} 23:59", "%Y-%m-%d %H:%M").timestamp()
+
+                    # 生成资讯内容
+                    news_content = f"<li>［{show_time} {source}］{title} 👉 <a href='{link}'>原文链接</a></li>"
+                    all_news.append((sort_time, show_time, news_content))
                     save_pushed_id(entry_id)
         except Exception as e:
             print(f"{source}抓取出错：{e}")
 
-    # 按时间倒序排序（最新的在前）
-    # 处理"未知时间"，放到最后；有效时间按HH:MM降序排列
-    def sort_key(item):
-        time_str = item[0]
-        if time_str == "未知时间":
-            return ("00:00",)  # 未知时间排最后
-        return (time_str,)
-    all_news.sort(key=sort_key, reverse=True)
+    # 按时间戳倒序排序（最新的在前，同日期时分优先于无时分）
+    all_news.sort(key=lambda x: x[0], reverse=True)
 
-    # 整理邮件正文（无分类，统一展示）
-    邮件内容 = []
-    当前推送时间 = datetime.now().strftime("%Y-%m-%d %H:%M")
-    # 抬头按你之前要求：年月日+最新资讯时分（无重复第二行）
-    最新时间 = all_news[0][0] if all_news else 当前推送时间.split(" ")[1]
-    邮件内容.append(f"📩 最新资讯推送（{datetime.now().strftime('%Y-%m-%d')} {最新时间}）\n")
+    # 整理邮件正文
+    email_content = []
+    # 抬头：最新资讯的展示时间（时分/月-日）
+    latest_show_time = all_news[0][1] if all_news else "无新资讯"
+    email_content.append(f"📩 最新资讯推送（{latest_show_time}）")
+    email_content.append("<ul style='line-height: 1.8; padding-left: 20px;'>")
 
-    # 加入排序后的所有资讯
-    if all_news:
-        邮件内容.append("<ul>")
-        for _, content in all_news:  # 只取内容，时间已在内容里展示
-            邮件内容.append(content)
-        邮件内容.append("</ul>")
+    # 加入排序后的资讯
+    for _, _, content in all_news:
+        email_content.append(content)
+    email_content.append("</ul>")
 
     # 发送邮件
     if all_news:
-        最终邮件内容 = "\n".join(邮件内容)
-        邮件标题 = f"资讯推送 | {当前推送时间}"
-        send_email(邮件标题, 最终邮件内容)
+        final_content = "\n".join(email_content)
+        email_title = f"资讯推送 | {datetime.now().strftime('%m-%d')}"  # 标题也显月-日
+        send_email(email_title, final_content)
     else:
-        print("暂无新资讯，不推送")
+        print("ℹ️  暂无新资讯，不推送")
 
 # 执行脚本
 if __name__ == "__main__":
