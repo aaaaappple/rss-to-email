@@ -12,10 +12,10 @@ QQ_AUTH_CODE = "excnvmaryozwbech"
 RECEIVER_EMAIL = "1047372945@qq.com"
 # ---------------------------------------------------------------------------
 
-# 数据源配置（不用改）
+# 数据源配置（新增权重：数字越小，时间相同时优先级越高）
 RSS_SOURCES = [
-    ("https://reutersnew.buzzing.cc/feed.xml", "路透社"),
-    ("https://bloombergnew.buzzing.cc/feed.xml", "彭博社")
+    ("https://reutersnew.buzzing.cc/feed.xml", "路透社", 1),  # 权重1：优先
+    ("https://bloombergnew.buzzing.cc/feed.xml", "彭博社", 2)   # 权重2：次优先
 ]
 
 # 自动记录已推送内容（防重复，不用管）
@@ -77,16 +77,28 @@ def get_news_md_date(entry):
     except:
         return datetime.now().strftime("%m-%d")  # 解析失败显当前月日
 
-# 核心3：抓资讯+智能显时间+按信息源更新顺序排序
+# 核心3：提取资讯原始更新时间戳（用于跨源混合排序）
+def get_source_update_timestamp(entry):
+    try:
+        # 优先用entry的updated/published字段（信息源原始更新时间）
+        time_str = entry.get("updated", entry.get("published", ""))
+        if not time_str:
+            return datetime.now().timestamp()  # 无时间则用当前时间戳
+        time_obj = datetime.fromisoformat(time_str.replace("Z", "+00:00"))
+        return time_obj.timestamp()  # 返回时间戳（数字越大，更新越新）
+    except:
+        return datetime.now().timestamp()  # 解析失败用当前时间戳
+
+# 核心4：抓资讯+智能显时间+跨源按原始更新时间混合排序（含时间相同规则）
 def fetch_rss():
     pushed_ids = get_pushed_ids()
-    all_news = []  # 直接按信息源更新顺序存储，不额外排序
+    # 存储：(信息源原始更新时间戳, 数据源权重, 资讯内容) → 权重用于时间相同时排序
+    all_news_with_info = []
 
-    # 循环抓取两个数据源（顺序不影响，均按各自源更新顺序提取）
-    for rss_url, source in RSS_SOURCES:
+    # 循环抓取两个数据源（新增权重参数weight）
+    for rss_url, source, weight in RSS_SOURCES:
         try:
             feed = feedparser.parse(rss_url)
-            # feed.entries本身就是信息源的更新顺序（最新资讯排在最前面），直接循环即可
             for entry in feed.entries:
                 entry_id = entry.get("id", "").strip()
                 title = entry.get("title", "").strip()
@@ -106,30 +118,36 @@ def fetch_rss():
                     else:
                         show_time = get_news_md_date(entry)  # 无分时：显MM-DD
                     
-                    # 生成统一格式的资讯内容
+                    # 生成资讯内容
                     news_content = f"<li>［{show_time} {source}］{title} 👉 <a href='{link}' target='_blank'>原文链接</a></li>"
-                    # 按信息源更新顺序添加（feed.entries默认最新在前，直接append就是正确顺序）
-                    all_news.append(news_content)
+                    # 提取信息源原始更新时间戳
+                    update_timestamp = get_source_update_timestamp(entry)
+                    # 存入列表（时间戳+权重+内容）→ 权重用于时间相同时排序
+                    all_news_with_info.append((update_timestamp, weight, news_content))
                     # 记录已推送，避免重复
                     save_pushed_id(entry_id)
         except Exception as e:
             print(f"{source}抓取出错：{e}")
 
-    # 按信息源更新顺序整理邮件（不额外排序，保持原始更新顺序）
+    # 关键排序逻辑：1. 时间戳倒序（优先，更新晚的在前）；2. 权重正序（时间相同时，权重小的优先）
+    all_news_with_info.sort(key=lambda x: (-x[0], x[1]))
+    # 提取排序后的纯资讯内容
+    sorted_news = [content for _, _, content in all_news_with_info]
+
+    # 按混合排序后的顺序整理邮件
     email_content = []
     # 邮件抬头：用第一条资讯的时间（最新资讯的时间）
-    if all_news:
-        # 提取第一条资讯的时间（从内容中截取，确保抬头和最新资讯一致）
-        first_news = all_news[0]
+    if sorted_news:
+        first_news = sorted_news[0]
         time_match = re.search(r'［(\S+) ', first_news)
         latest_time = time_match.group(1) if time_match else datetime.now().strftime("%m-%d")
         email_content.append(f"📩 最新资讯推送（{latest_time}）")
         email_content.append("<ul style='line-height: 1.9; padding-left: 22px; margin: 8px 0;'>")
-        email_content.extend(all_news)  # 直接添加按信息源顺序排列的资讯
+        email_content.extend(sorted_news)  # 添加混合排序后的资讯
         email_content.append("</ul>")
 
     # 有新资讯才推送，不发空邮件
-    if all_news:
+    if sorted_news:
         final_content = "\n".join(email_content)
         email_title = f"资讯推送 | {datetime.now().strftime('%m-%d')}"
         send_email(email_title, final_content)
