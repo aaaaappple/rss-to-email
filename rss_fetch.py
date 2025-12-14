@@ -48,7 +48,7 @@ def send_email(subject, content, news_bj_date):
         <meta charset="utf-8">
         <style>
             body {{ font-family: 微软雅黑, Arial, sans-serif; line-height: 2.2; font-size: 15px; }}
-            li {{ margin-bottom: 12px; list-style: none; padding-left: 5px; }}
+            li {{ margin-bottom: 12px; list-style: none; padding-left: 1px; }}
             a {{ text-decoration: none; }}
             a:hover {{ text-decoration: underline; }}
         </style>
@@ -56,7 +56,7 @@ def send_email(subject, content, news_bj_date):
     <body>
         <!-- 邮件内主标题：完整北京时间（年-月-日） -->
         <h2 style="color:{COLORS['title']}; font-size:18px; margin-bottom:25px;">路博速递（{news_bj_date}）</h2>
-        <ul style="padding-left:12px; margin:0;">
+        <ul style="padding-left:2px; margin:0;">
             {content}
         </ul>
     </body>
