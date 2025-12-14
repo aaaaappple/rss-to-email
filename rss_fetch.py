@@ -1,7 +1,7 @@
 import feedparser
 import smtplib
 from email.mime.text import MIMEText
-from datetime import datetime, timedelta  # 重新导入时区转换
+from datetime import datetime, timedelta
 import os
 import html
 import re
@@ -39,7 +39,7 @@ def save_pushed_id(id):
     with open("pushed_ids.txt", "a", encoding="utf-8") as f:
         f.write(f"{id}\n")
 
-# 发送邮件（两处日期传入最新资讯的北京时间月日）
+# 发送邮件（两处日期显示完整北京时间：年-月-日）
 def send_email(subject, content, news_bj_date):
     html_content = f"""
     <!DOCTYPE html>
@@ -54,7 +54,7 @@ def send_email(subject, content, news_bj_date):
         </style>
     </head>
     <body>
-        <!-- 邮件内主标题：用最新资讯的北京时间月日 -->
+        <!-- 邮件内主标题：完整北京时间（年-月-日） -->
         <h2 style="color:{COLORS['title']}; font-size:18px; margin-bottom:25px;">📩 最新资讯推送（{news_bj_date}）</h2>
         <ul style="padding-left:22px; margin:0;">
             {content}
@@ -65,14 +65,14 @@ def send_email(subject, content, news_bj_date):
     msg = MIMEText(html_content, "html", "utf-8")
     msg["From"] = QQ_EMAIL
     msg["To"] = RECEIVER_EMAIL
-    msg["Subject"] = subject  # 邮件主题：用最新资讯的北京时间月日
+    msg["Subject"] = subject  # 邮件主题：完整北京时间（年-月-日）
 
     try:
         smtp = smtplib.SMTP_SSL("smtp.qq.com", 465)
         smtp.login(QQ_EMAIL, QQ_AUTH_CODE)
         smtp.sendmail(QQ_EMAIL, RECEIVER_EMAIL, msg.as_string())
         smtp.quit()
-        print("✅ 邮件推送成功！两处日期为最新资讯的北京时间月日")
+        print("✅ 邮件推送成功！两处日期显示完整北京时间（年-月-日）")
     except smtplib.SMTPAuthenticationError:
         print("❌ 登录失败！请替换为自己的QQ邮箱16位SMTP授权码（非登录密码）")
     except Exception as e:
@@ -99,7 +99,7 @@ def get_show_time(entry, content):
     except:
         return datetime.now().strftime("%m-%d")
 
-# 提取资讯UTC时间并转换为北京时间戳+月日（核心：用于排序和提取日期）
+# 提取资讯UTC时间并转换为【完整北京时间】（戳+年-月-日）
 def get_news_bj_info(entry):
     try:
         entry_time = entry.get("updated", entry.get("published", ""))
@@ -108,20 +108,20 @@ def get_news_bj_info(entry):
             utc_time = datetime.fromisoformat(entry_time.replace("Z", "+00:00"))
             # 转换为北京时间
             bj_time = utc_time + timedelta(hours=8)
-            # 返回北京时间戳（排序用）和北京时间月日（显示用）
-            return bj_time.timestamp(), bj_time.strftime("%m-%d")
-        # 无时间字段时，返回当前北京时间戳和月日
+            # 返回：北京时间戳（排序用）、完整北京时间（年-月-日，显示用）
+            return bj_time.timestamp(), bj_time.strftime("%Y-%m-%d")
+        # 无时间字段时，返回当前完整北京时间
         current_bj = datetime.now()
-        return current_bj.timestamp(), current_bj.strftime("%m-%d")
+        return current_bj.timestamp(), current_bj.strftime("%Y-%m-%d")
     except:
-        # 异常时，返回当前北京时间戳和月日
+        # 异常时，返回当前完整北京时间
         current_bj = datetime.now()
-        return current_bj.timestamp(), current_bj.strftime("%m-%d")
+        return current_bj.timestamp(), current_bj.strftime("%Y-%m-%d")
 
-# 核心逻辑：两处日期为最新资讯的北京时间月日，其余功能不变
+# 核心逻辑：两处日期显示完整北京时间（年-月-日），其余功能不变
 def fetch_rss():
     pushed_ids = get_pushed_ids()
-    all_news = []  # 存储：(北京时间戳, 来源, 展示时间, 标题, 链接, 资讯ID, 资讯北京时间月日)
+    all_news = []  # 存储：(北京时间戳, 来源, 展示时间, 标题, 链接, 资讯ID, 完整北京时间)
     source_counter = {"路透社": 0, "彭博社": 0}  # 分源计数（括号内用）
     global_counter = 0  # 全局计数（最前面的连续序号）
 
@@ -138,7 +138,7 @@ def fetch_rss():
                 # 筛选条件：未推送+有有效ID+有标题+有合法链接
                 if entry_id not in pushed_ids and entry_id and title and link.startswith(("http", "https")):
                     show_time = get_show_time(entry, content)
-                    # 获取资讯的北京时间戳和北京时间月日
+                    # 获取资讯的北京时间戳+完整北京时间（年-月-日）
                     bj_timestamp, news_bj_date = get_news_bj_info(entry)
                     all_news.append((bj_timestamp, source, show_time, title, link, entry_id, news_bj_date))
                     save_pushed_id(entry_id)  # 标记为已推送，避免重复
@@ -149,20 +149,16 @@ def fetch_rss():
     all_news.sort(key=lambda x: -x[0])
     news_html_list = []  # 存储每条资讯的HTML代码
 
-    # 确定两处标题的显示日期：优先最新资讯的北京时间月日，无新资讯则用当前北京时间
+    # 确定两处标题的显示日期：优先最新资讯的完整北京时间，无新资讯则用当前
     if all_news:
-        # 取最新一条资讯的北京时间月日
-        display_bj_date = all_news[0][6]
+        display_bj_date = all_news[0][6]  # 最新资讯的完整北京时间（年-月-日）
     else:
-        # 兜底：无新资讯时用当前北京时间月日
-        display_bj_date = datetime.now().strftime("%m-%d")
+        display_bj_date = datetime.now().strftime("%Y-%m-%d")  # 兜底：当前完整北京时间
 
     # 生成带双序号+🔗符号的资讯列表
     for news in all_news:
         bj_timestamp, source, show_time, title, link, _, _ = news
-        # 全局序号+1（连续标序）
         global_counter += 1
-        # 分源序号+1（各自独立）
         source_counter[source] += 1
         source_seq = source_counter[source]
 
@@ -184,9 +180,9 @@ def fetch_rss():
     # 有新资讯才发送邮件
     if news_html_list:
         final_content = "\n".join(news_html_list)
-        # 邮件主题：用最新资讯的北京时间月日（对应第一个圈）
+        # 邮件主题：完整北京时间（年-月-日），对应第一个圈
         email_title = f"快讯 | {display_bj_date}"
-        # 发送邮件，传入最新资讯的北京时间月日（用于邮件内主标题，对应第二个圈）
+        # 发送邮件，传入完整北京时间（用于邮件内主标题，对应第二个圈）
         send_email(email_title, final_content, display_bj_date)
     else:
         print("ℹ️  暂无新资讯，本次不推送邮件")
