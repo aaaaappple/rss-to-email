@@ -181,7 +181,7 @@ def fetch_rss():
     if news_html_list:
         final_content = "\n".join(news_html_list)
         # 邮件主题：完整北京时间（年-月-日），对应第一个圈
-        email_title = f"快讯 | {display_bj_date}"
+        email_title = f"源子快讯 | {display_bj_date}"
         # 发送邮件，传入完整北京时间（用于邮件内主标题，对应第二个圈）
         send_email(email_title, final_content, display_bj_date)
     else:
