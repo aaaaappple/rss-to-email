@@ -54,7 +54,7 @@ def send_email(subject, content):
         </style>
     </head>
     <body>
-        <h2 style="color:{COLORS['title']}; font-size:18px; margin-bottom:25px;">📩 最新资讯推送（{datetime.now().strftime('%m-%d')}）</h2>
+        <h2 style="color:{COLORS['title']}; font-size:18px; margin-bottom:25px;">📩 「剧彭速递」（{bj_date}）</h2>
         <ul style="padding-left:12px; margin:0;">
             {content}
         </ul>
