@@ -23,7 +23,7 @@ COLORS = {
     "time": "#F97316",       # 时间：橙色
     "reuters": "#E63946",    # 路透社：红色
     "bloomberg": "#1D4ED8",  # 彭博社：蓝色
-    "link": "#16A34A",       # 链接符号：绿色
+    "link": "#1D4ED8",       # 链接符号：红色
     "title": "#2E4057"       # 主标题：深蓝色
 }
 
@@ -48,14 +48,14 @@ def send_email(subject, content):
         <meta charset="utf-8">
         <style>
             body {{ font-family: 微软雅黑, Arial, sans-serif; line-height: 2.2; font-size: 15px; }}
-            li {{ margin-bottom: 12px; list-style: none; padding-left: 8px; }}
+            li {{ margin-bottom: 12px; list-style: none; padding-left: 5px; }}
             a {{ text-decoration: none; }}
             a:hover {{ text-decoration: underline; }}
         </style>
     </head>
     <body>
         <h2 style="color:{COLORS['title']}; font-size:18px; margin-bottom:25px;">📩 最新资讯推送（{datetime.now().strftime('%m-%d')}）</h2>
-        <ul style="padding-left:22px; margin:0;">
+        <ul style="padding-left:12px; margin:0;">
             {content}
         </ul>
     </body>
@@ -167,7 +167,7 @@ def fetch_rss():
     # 有新资讯才发送邮件
     if news_html_list:
         final_content = "\n".join(news_html_list)
-        email_title = f"资讯推送 | {datetime.now().strftime('%m-%d')}"
+        email_title = f"快讯 | {datetime.now().strftime('%m-%d')}"
         send_email(email_title, final_content)
     else:
         print("ℹ️  暂无新资讯，本次不推送邮件")
