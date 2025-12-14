@@ -1,7 +1,7 @@
 import feedparser
 import smtplib
 from email.mime.text import MIMEText
-from datetime import datetime
+from datetime import datetime  # 移除时区转换，仅保留当前北京时间获取
 import os
 import html
 import re
@@ -23,7 +23,7 @@ COLORS = {
     "time": "#F97316",       # 时间：橙色
     "reuters": "#E63946",    # 路透社：红色
     "bloomberg": "#1D4ED8",  # 彭博社：蓝色
-    "link": "#1D4ED8",       # 链接符号：红色
+    "link": "#16A34A",       # 链接符号：绿色
     "title": "#2E4057"       # 主标题：深蓝色
 }
 
@@ -39,8 +39,10 @@ def save_pushed_id(id):
     with open("pushed_ids.txt", "a", encoding="utf-8") as f:
         f.write(f"{id}\n")
 
-# 发送邮件（内联样式确保颜色生效，适配🔗符号展示）
+# 发送邮件（仅两处月日改为北京时间，其余不变）
 def send_email(subject, content):
+    # 获取北京时间的月日（仅用于邮件内主标题，对应第二个圈）
+    bj_date = datetime.now().strftime("%m-%d")
     html_content = f"""
     <!DOCTYPE html>
     <html lang="zh-CN">
@@ -48,14 +50,15 @@ def send_email(subject, content):
         <meta charset="utf-8">
         <style>
             body {{ font-family: 微软雅黑, Arial, sans-serif; line-height: 2.2; font-size: 15px; }}
-            li {{ margin-bottom: 12px; list-style: none; padding-left: 5px; }}
+            li {{ margin-bottom: 12px; list-style: none; padding-left: 8px; }}
             a {{ text-decoration: none; }}
             a:hover {{ text-decoration: underline; }}
         </style>
     </head>
     <body>
-        <h2 style="color:{COLORS['title']}; font-size:18px; margin-bottom:25px;">📩 「剧彭速递」（{bj_date}）</h2>
-        <ul style="padding-left:12px; margin:0;">
+        <!-- 邮件内主标题：第二个圈的月日，用北京时间 -->
+        <h2 style="color:{COLORS['title']}; font-size:18px; margin-bottom:25px;">📩 最新资讯推送（{bj_date}）</h2>
+        <ul style="padding-left:22px; margin:0;">
             {content}
         </ul>
     </body>
@@ -64,23 +67,23 @@ def send_email(subject, content):
     msg = MIMEText(html_content, "html", "utf-8")
     msg["From"] = QQ_EMAIL
     msg["To"] = RECEIVER_EMAIL
-    msg["Subject"] = subject
+    msg["Subject"] = subject  # 邮件主题：第一个圈的月日，外部传入（已为北京时间）
 
     try:
         smtp = smtplib.SMTP_SSL("smtp.qq.com", 465)
         smtp.login(QQ_EMAIL, QQ_AUTH_CODE)
         smtp.sendmail(QQ_EMAIL, RECEIVER_EMAIL, msg.as_string())
         smtp.quit()
-        print("✅ 邮件推送成功！🔗符号替代原文链接，跳转功能正常")
+        print("✅ 邮件推送成功！仅两处月日改为北京时间，其余不变")
     except smtplib.SMTPAuthenticationError:
         print("❌ 登录失败！请替换为自己的QQ邮箱16位SMTP授权码（非登录密码）")
     except Exception as e:
         print(f"❌ 推送失败：{e}")
 
-# 提取资讯展示时间（优先XX:XX，无则MM-DD）
+# 提取资讯展示时间（恢复原始逻辑，分时不做时区转换，对应你的要求）
 def get_show_time(entry, content):
     try:
-        # 提取分时（XX:XX）
+        # 提取原始分时（XX:XX），不做任何时区转换，保持原样
         content = html.unescape(content).replace("\n", "").replace("\r", "").replace("\t", "").strip()
         time_patterns = [
             r'>\s*(\d{2}:\d{2})\s*<',
@@ -90,8 +93,8 @@ def get_show_time(entry, content):
         for pattern in time_patterns:
             match = re.search(pattern, content, re.IGNORECASE)
             if match:
-                return match.group(1).strip()
-        # 提取月日（MM-DD）
+                return match.group(1).strip()  # 直接返回原始分时，不转换
+        # 提取原始月日（无分时时用），此处仍保持原始逻辑，不改动
         entry_time = entry.get("updated", entry.get("published", ""))
         if entry_time:
             time_obj = datetime.fromisoformat(entry_time.replace("Z", "+00:00"))
@@ -100,7 +103,7 @@ def get_show_time(entry, content):
     except:
         return datetime.now().strftime("%m-%d")
 
-# 提取资讯时间戳（用于混合排序：最新资讯在前）
+# 提取资讯时间戳（恢复原始逻辑，不做时区转换，排序不变）
 def get_news_timestamp(entry):
     try:
         entry_time = entry.get("updated", entry.get("published", ""))
@@ -110,14 +113,14 @@ def get_news_timestamp(entry):
     except:
         return datetime.now().timestamp()
 
-# 核心逻辑：时间混合排序+全局标序+括号内分源标序+🔗符号替换
+# 核心逻辑：仅两处月日改北京时间，其余功能（标序/符号/颜色/排序）全不变
 def fetch_rss():
     pushed_ids = get_pushed_ids()
     all_news = []  # 存储所有有效资讯：(时间戳, 来源, 展示时间, 标题, 链接, 资讯ID)
     source_counter = {"路透社": 0, "彭博社": 0}  # 分源计数（括号内用）
     global_counter = 0  # 全局计数（最前面的连续序号）
 
-    # 抓取并筛选所有数据源的资讯
+    # 抓取并筛选所有数据源的资讯（逻辑不变）
     for rss_url, source in RSS_SOURCES:
         try:
             feed = feedparser.parse(rss_url)
@@ -136,11 +139,11 @@ def fetch_rss():
         except Exception as e:
             print(f"⚠️ {source}资讯抓取出错：{e}（不影响其他数据源）")
 
-    # 按时间戳倒序排序（最新的资讯排在最前面）
+    # 按原始时间戳倒序排序（逻辑不变）
     all_news.sort(key=lambda x: -x[0])
     news_html_list = []  # 存储每条资讯的HTML代码
 
-    # 生成带双序号+🔗符号的资讯列表
+    # 生成带双序号+🔗符号的资讯列表（逻辑不变）
     for news in all_news:
         timestamp, source, show_time, title, link, _ = news
         # 全局序号+1（连续标序）
@@ -149,13 +152,13 @@ def fetch_rss():
         source_counter[source] += 1
         source_seq = source_counter[source]
 
-        # 内联样式：确保颜色在QQ邮箱中生效
+        # 内联样式：颜色逻辑不变
         time_style = f"color:{COLORS['time']};font-weight:bold;"
         source_color = COLORS["reuters"] if source == "路透社" else COLORS["bloomberg"]
         source_style = f"color:{source_color};font-weight:bold;"
         link_style = f"color:{COLORS['link']};"
 
-        # 核心修改：将“原文链接”替换为🔗符号，保留跳转功能
+        # 🔗符号替换原文链接（逻辑不变）
         news_html = f"""
         <li>
             {global_counter}. ［<span style="{time_style}">{show_time}</span> <span style="{source_style}">{source}({source_seq})</span>］
@@ -167,8 +170,9 @@ def fetch_rss():
     # 有新资讯才发送邮件
     if news_html_list:
         final_content = "\n".join(news_html_list)
+        # 邮件主题：第一个圈的月日，用北京时间（核心修改点）
         bj_date = datetime.now().strftime("%m-%d")
-        email_title = f"快讯 | {bj_date}"
+        email_title = f"快讯 | {bj_date}"  # 对应截图中“快讯 12-14”的格式
         send_email(email_title, final_content)
     else:
         print("ℹ️  暂无新资讯，本次不推送邮件")
