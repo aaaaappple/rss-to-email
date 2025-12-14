@@ -23,7 +23,7 @@ COLORS = {
     "time": "#F97316",       # 时间：橙色
     "reuters": "#E63946",    # 路透社：红色
     "bloomberg": "#1D4ED8",  # 彭博社：蓝色
-    "link": "#16A34A",       # 链接：绿色
+    "link": "#16A34A",       # 链接符号：绿色
     "title": "#2E4057"       # 主标题：深蓝色
 }
 
@@ -39,7 +39,7 @@ def save_pushed_id(id):
     with open("pushed_ids.txt", "a", encoding="utf-8") as f:
         f.write(f"{id}\n")
 
-# 发送邮件（内联样式确保颜色生效，结构适配双序号）
+# 发送邮件（内联样式确保颜色生效，适配🔗符号展示）
 def send_email(subject, content):
     html_content = f"""
     <!DOCTYPE html>
@@ -71,7 +71,7 @@ def send_email(subject, content):
         smtp.login(QQ_EMAIL, QQ_AUTH_CODE)
         smtp.sendmail(QQ_EMAIL, RECEIVER_EMAIL, msg.as_string())
         smtp.quit()
-        print("✅ 邮件推送成功！全局标序+括号内分源标序生效")
+        print("✅ 邮件推送成功！🔗符号替代原文链接，跳转功能正常")
     except smtplib.SMTPAuthenticationError:
         print("❌ 登录失败！请替换为自己的QQ邮箱16位SMTP授权码（非登录密码）")
     except Exception as e:
@@ -110,7 +110,7 @@ def get_news_timestamp(entry):
     except:
         return datetime.now().timestamp()
 
-# 核心逻辑：时间混合排序+全局标序+括号内分源标序
+# 核心逻辑：时间混合排序+全局标序+括号内分源标序+🔗符号替换
 def fetch_rss():
     pushed_ids = get_pushed_ids()
     all_news = []  # 存储所有有效资讯：(时间戳, 来源, 展示时间, 标题, 链接, 资讯ID)
@@ -140,7 +140,7 @@ def fetch_rss():
     all_news.sort(key=lambda x: -x[0])
     news_html_list = []  # 存储每条资讯的HTML代码
 
-    # 生成带双序号的资讯列表
+    # 生成带双序号+🔗符号的资讯列表
     for news in all_news:
         timestamp, source, show_time, title, link, _ = news
         # 全局序号+1（连续标序）
@@ -155,11 +155,11 @@ def fetch_rss():
         source_style = f"color:{source_color};font-weight:bold;"
         link_style = f"color:{COLORS['link']};"
 
-        # 生成单条资讯的HTML
+        # 核心修改：将“原文链接”替换为🔗符号，保留跳转功能
         news_html = f"""
         <li>
             {global_counter}. ［<span style="{time_style}">{show_time}</span> <span style="{source_style}">{source}({source_seq})</span>］
-            {title} 👉 <a href="{link}" target="_blank" style="{link_style}">原文链接</a>
+            {title} 👉 <a href="{link}" target="_blank" style="{link_style}">🔗</a>
         </li>
         """
         news_html_list.append(news_html)
