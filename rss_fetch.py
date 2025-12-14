@@ -167,7 +167,8 @@ def fetch_rss():
     # 有新资讯才发送邮件
     if news_html_list:
         final_content = "\n".join(news_html_list)
-        email_title = f"快讯 | {datetime.now().strftime('%m-%d')}"
+        bj_date = datetime.now().strftime("%m-%d")
+        email_title = f"快讯 | {bj_date}"
         send_email(email_title, final_content)
     else:
         print("ℹ️  暂无新资讯，本次不推送邮件")
